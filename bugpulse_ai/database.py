@@ -218,6 +218,15 @@ class DatabaseManager:
             human_approval_rate=approval_rate
         )
 
+    def reseed_data(self, csv_path: Optional[str] = None):
+        """Clears existing records and re-seeds with fresh enterprise batch."""
+        with self._get_connection() as conn:
+            c = conn.cursor()
+            c.execute("DELETE FROM processed_bugs")
+            c.execute("DELETE FROM human_feedback")
+            conn.commit()
+        self.seed_initial_enterprise_dataset(csv_path)
+
     def seed_initial_enterprise_dataset(self, csv_path: Optional[str] = None):
         """Pre-seeds the database with the 25-report realistic enterprise batch."""
         if self.count_records() > 0:

@@ -1302,11 +1302,19 @@ Raw Ticket Input &rarr; Line Indexer [L01..Lnn] &rarr; AST Code Allowlist &rarr;
                 groupDuplicates() {
                     const groups = {};
                     (this.records || []).forEach(r => {
-                        const lbl = r.duplicate_group_label || 'Individual Ticket';
+                        let lbl = r.duplicate_group_label;
+                        if (!lbl || lbl === 'Individual Ticket' || lbl.startsWith('1 report')) return;
+                        lbl = lbl.replace(/^\d+\s+reports?:\s*/i, '').trim();
                         if (!groups[lbl]) groups[lbl] = [];
                         groups[lbl].push(r);
                     });
-                    this.duplicateGroups = groups;
+                    const filtered = {};
+                    for (const [k, v] of Object.entries(groups)) {
+                        if (v.length > 1) {
+                            filtered[k] = v;
+                        }
+                    }
+                    this.duplicateGroups = filtered;
                 },
 
                 async runTriage() {
