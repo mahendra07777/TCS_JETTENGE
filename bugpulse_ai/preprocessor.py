@@ -38,7 +38,7 @@ class Preprocessor:
     AWS_KEY_REGEX = re.compile(r'\b(?:AKIA|ABIA|ACCA|ASIA)[0-9A-Z]{16}\b')
     BEARER_TOKEN_REGEX = re.compile(r'\bBearer\s+([a-zA-Z0-9\-._~+/]+=*)\b', re.IGNORECASE)
     GENERIC_SECRET_REGEX = re.compile(r'(?:api[_-]?key|secret|password|access[_-]?token|auth[_-]?token)[\s:=]+([\'"][^\'"\s]{8,}[\'"]|[^\'"\s]{8,})', re.IGNORECASE)
-    REPORTER_NAME_REGEX = re.compile(r'(?:reported\s+by|reporter|user|contact|author)[\s:=]+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)', re.IGNORECASE)
+    REPORTER_NAME_REGEX = re.compile(r'(?:reported\s+by|reporter|logged\s+by|submitted\s+by|created\s+by|contact\s+person|ticket\s+author|assigned\s+to)[\s:=]+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)', re.IGNORECASE)
 
     # Log line & stack trace detection heuristics
     LOG_TIMESTAMP_REGEX = re.compile(r'^\s*(\d{4}[-/.]\d{2}[-/.]\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:\.\d+)?|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})\b')

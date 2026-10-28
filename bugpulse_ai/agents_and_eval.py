@@ -356,43 +356,49 @@ GROUNDING INSTRUCTIONS:
         """
         lower = raw_text.lower()
 
-        # 1. Detect Domain Component
+        # 1. Detect Domain Component (Specific domains prioritized first)
         component = component_hint
         if not component:
-            if "payment" in lower or "stripe" in lower or "card" in lower or "charge" in lower:
+            if "billing" in lower or "invoice" in lower:
+                component = "Billing UI"
+            elif "payment" in lower or "stripe" in lower or "credit card" in lower or "charge" in lower or "gateway" in lower:
                 component = "Payments"
-            elif "auth" in lower or "login" in lower or "sso" in lower or "oauth" in lower or "okta" in lower:
+            elif "salary" in lower or "payroll" in lower or "idor" in lower or "tenant" in lower or "user profile" in lower or "vulnerability" in lower:
+                component = "User Management"
+            elif "inventory" in lower or "stock" in lower or "sku" in lower or "product details" in lower or "desynchronization" in lower:
+                component = "Catalog & Inventory"
+            elif "database" in lower or "sql" in lower or "hikaripool" in lower or "postgres" in lower or "jdbc" in lower or "cannotcreatetransaction" in lower:
+                component = "Database"
+            elif "fcm" in lower or "push notification" in lower:
+                component = "Notifications"
+            elif "login" in lower or "sso" in lower or "oauth" in lower or "okta" in lower or "safari" in lower:
                 component = "Authentication"
             elif "checkout" in lower or "cart" in lower or "tax" in lower or "gst" in lower:
                 component = "Checkout"
-            elif "database" in lower or "sql" in lower or "hikaripool" in lower or "postgres" in lower or "jdbc" in lower:
-                component = "Database"
-            elif "fcm" in lower or "push" in lower or "notification" in lower:
-                component = "Notifications"
-            elif "inventory" in lower or "stock" in lower or "sku" in lower:
-                component = "Catalog & Inventory"
-            elif "billing" in lower or "invoice" in lower:
-                component = "Billing UI"
-            elif "idor" in lower or "payroll" in lower or "vulnerability" in lower:
-                component = "User Management"
             else:
                 component = "Core Platform"
 
         # 2. Detect Priority & Severity Mismatch
-        is_critical_crash = any(w in lower for w in [
+        high_signals = [
             "timeout", "deadlock", "sockettimeoutexception", "504 gateway", "500 internal",
-            "connection is not available", "unauthorized", "idor", "vulnerability", "leak", "fail", "stalled"
-        ])
+            "connection is not available", "unauthorized", "idor", "vulnerability", "leak",
+            "crash", "locked out", "cannot log in", "unredacted", "authorization",
+            "typeerror", "401", "stalled", "outage", "cannot create transaction"
+        ]
+        med_signals = [
+            "rounding", "tax", "gst", "stale", "mismatch", "warning", "wrong quantity",
+            "desynchronization", "not working", "cannot complete", "intermittent"
+        ]
 
-        if any(w in lower for w in ["idor", "vulnerability", "leak", "deadlock", "sockettimeoutexception", "504 gateway", "connection is not available"]):
+        if any(w in lower for w in high_signals):
             ai_level = "High"
-            p_reason = "Production service degradation, payment failure, or unauthenticated data exposure"
-        elif any(w in lower for w in ["rounding", "tax", "gst", "stale", "mismatch", "warning"]):
+            p_reason = f"Critical priority: Technical evidence indicates operational disruption, authentication barrier, or security risk in {component}."
+        elif any(w in lower for w in med_signals):
             ai_level = "Medium"
-            p_reason = "Business logic precision defect affecting data integrity or calculations"
+            p_reason = f"Medium priority: Functional defect or state inconsistency in {component} affecting user experience without system outage."
         else:
             ai_level = "Low"
-            p_reason = "Minor cosmetic or non-blocking client interface inconvenience"
+            p_reason = f"Low priority: Non-critical cosmetic issue or minor functional inconvenience in {component}."
 
         reported_sev_str = reported_severity or "Low"
         is_mismatch = (reported_sev_str.lower() in ["low", "p4", "minor"] and ai_level == "High")
@@ -475,18 +481,22 @@ GROUNDING INSTRUCTIONS:
                         verbatim_quote=act_text[:70]
                     )
 
-        # Fallback Expected Behavior
+        # Fallback Expected Behavior (Context-aware)
         if not expected_claim:
-            if component == "Payments":
-                expected_claim = EpistemicClaim(label="GUESS", text="Credit card payment completes authorization within SLA and updates order status to CONFIRMED")
-            elif component == "Authentication":
-                expected_claim = EpistemicClaim(label="GUESS", text="User is redirected to Dashboard with valid session JWT after completing corporate SSO")
-            elif component == "Billing UI":
-                expected_claim = EpistemicClaim(label="GUESS", text="Submit button processes invoice payment and displays confirmation message")
-            elif component == "User Management":
-                expected_claim = EpistemicClaim(label="GUESS", text="API endpoint validates principal tenant and forbids access to other employee records (HTTP 403)")
+            if "payment" in lower or "charge" in lower or "card" in lower:
+                expected_claim = EpistemicClaim(label="GUESS", text="Payment authorization completes within SLA and updates order status to CONFIRMED")
+            elif "auth" in lower or "login" in lower or "sso" in lower or "oauth" in lower:
+                expected_claim = EpistemicClaim(label="GUESS", text="User authenticates successfully and is redirected to Dashboard with an active session")
+            elif "button" in lower or "submit" in lower or "click" in lower:
+                expected_claim = EpistemicClaim(label="GUESS", text="User interface action triggers processing and displays appropriate confirmation feedback")
+            elif "tax" in lower or "gst" in lower or "calculation" in lower:
+                expected_claim = EpistemicClaim(label="GUESS", text="Cart totals, tax rates, and discounts are calculated accurately per currency precision rules")
+            elif "inventory" in lower or "stock" in lower:
+                expected_claim = EpistemicClaim(label="GUESS", text="Product inventory reflects real-time warehouse availability accurately on product page")
+            elif "database" in lower or "sql" in lower or "pool" in lower:
+                expected_claim = EpistemicClaim(label="GUESS", text="Database connection pool serves queries within timeout limits without thread exhaustion")
             else:
-                expected_claim = EpistemicClaim(label="GUESS", text="System operation completes successfully according to specification without throwing errors")
+                expected_claim = EpistemicClaim(label="GUESS", text=f"{component} operation completes successfully according to specification without throwing errors")
 
         # Fallback Actual Behavior
         if not actual_claim:
@@ -509,62 +519,53 @@ GROUNDING INSTRUCTIONS:
                 verbatim_quote=indexed_lines[0][1][:60] if indexed_lines else ""
             )
 
-        # 6. Operational Impact & Blast Radius
-        if component == "Payments":
+        # 6. Operational Impact & Blast Radius (Derived dynamically from error and component)
+        primary_err = error_claims[0].text if error_claims and error_claims[0].label == "FACT" else None
+        if ai_level == "High":
+            impact_desc = f"Critical business impact: {component} workflow stalled due to {primary_err or 'system error'}. Affects user transactions and SLA compliance."
             impact_claim = EpistemicClaim(
-                label="FACT" if error_claims and error_claims[0].label == "FACT" else "GUESS",
-                text="Critical business impact: checkout payments fail, transactions stall in PENDING state, and payment gateway circuit breaker trips",
-                source_line_number=error_claims[0].source_line_number if error_claims and error_claims[0].label == "FACT" else None,
-                verbatim_quote=error_claims[0].verbatim_quote if error_claims and error_claims[0].label == "FACT" else None
+                label="FACT" if primary_err else "GUESS",
+                text=impact_desc,
+                source_line_number=error_claims[0].source_line_number if primary_err else None,
+                verbatim_quote=error_claims[0].verbatim_quote if primary_err else None
             )
-        elif component == "Authentication":
-            impact_claim = EpistemicClaim(
-                label="FACT",
-                text="High blast radius: corporate employees on Safari browsers are completely locked out of portal SSO authentication",
-                source_line_number=actual_claim.source_line_number if actual_claim else None,
-                verbatim_quote=actual_claim.verbatim_quote if actual_claim else None
-            )
-        elif component == "Database":
-            impact_claim = EpistemicClaim(
-                label="FACT",
-                text="Service-wide outage: HikariPool connection exhaustion causes cascading HTTP 500 errors across all downstream microservices",
-                source_line_number=error_claims[0].source_line_number if error_claims else None,
-                verbatim_quote=error_claims[0].verbatim_quote if error_claims else None
-            )
-        elif component == "User Management":
-            impact_claim = EpistemicClaim(
-                label="FACT",
-                text="Severe security breach: unauthenticated IDOR flaw leaks sensitive employee payroll, salary, and identity records",
-                source_line_number=actual_claim.source_line_number if actual_claim else None,
-                verbatim_quote=actual_claim.verbatim_quote if actual_claim else None
-            )
+        elif ai_level == "Medium":
+            impact_desc = f"Moderate impact: Business logic or precision discrepancy in {component} affecting data accuracy without total service stoppage."
+            impact_claim = EpistemicClaim(label="GUESS", text=impact_desc, source_line_number=None, verbatim_quote=None)
         else:
-            impact_claim = EpistemicClaim(
-                label="GUESS",
-                text=f"Operational defect in {component} module impacting user workflows and customer satisfaction",
-                source_line_number=None,
-                verbatim_quote=None
-            )
+            impact_desc = f"Low operational risk: Minor client interface defect in {component} without backend failure or data loss."
+            impact_claim = EpistemicClaim(label="GUESS", text=impact_desc, source_line_number=None, verbatim_quote=None)
 
-        # 7. Professional Standardized Title ([Component] Root Issue under Trigger Condition)
-        if component == "Payments":
-            title = "[Payments] SocketTimeoutException (504 Gateway Timeout) on checkout credit card authorization"
-        elif component == "Authentication":
-            title = "[Authentication] SameSite cookie rejection causes 401 redirect loop during Safari SSO login"
-        elif component == "Billing UI":
-            title = "[Billing UI] Unresponsive submit button blocks invoice payment processing"
-        elif component == "Catalog & Inventory":
-            title = "[Catalog & Inventory] Redis cache desynchronization displays stale inventory counts for out-of-stock items"
-        elif component == "User Management":
-            title = "[User Management] IDOR vulnerability in payroll endpoint exposes unauthorized employee records"
-        elif component == "Database":
-            title = "[Database] HikariPool-1 connection pool exhaustion under concurrent order placement load"
-        elif component == "Notifications":
-            title = "[Notifications] FCM device token refresh failure drops order delivery push notifications"
-        elif component == "Checkout":
-            title = "[Checkout] Tax rounding precision discrepancy in multi-item cart calculation"
+        # 7. Dynamic Standardized Title ([Component] Root Issue under Trigger Condition)
+        # Avoid static hardcoded titles! Dynamically construct from input text and extracted signatures:
+        key_error_token = None
+        for err_candidate in ["SocketTimeoutException", "504 Gateway Timeout", "SameSite", "TypeError", "HikariPool", "IDOR", "CannotCreateTransactionException", "500 Internal", "401 Unauthorized", "Timeout", "Deadlock", "Desynchronization"]:
+            if err_candidate.lower() in lower:
+                key_error_token = err_candidate
+                break
+
+        # Extract best descriptive phrase from first non-header line
+        candidate_phrase = ""
+        for _, raw_l in indexed_lines[:5]:
+            l_str = raw_l.strip()
+            if not l_str or any(l_str.lower().startswith(p) for p in ["reported by:", "date:", "environment:", "user aadhaar:", "auth token:", "to reproduce:", "steps:"]):
+                continue
+            cleaned = re.sub(r'^(?:summary|title|subject|defect)[\s:=]+', '', l_str, flags=re.IGNORECASE).strip()
+            if len(cleaned) > 8 and not cleaned.endswith(":"):
+                candidate_phrase = cleaned
+                break
+
+        if key_error_token and candidate_phrase:
+            if key_error_token.lower() in candidate_phrase.lower():
+                title = f"[{component}] {candidate_phrase[:85]}"
+            else:
+                title = f"[{component}] {key_error_token}: {candidate_phrase[:65]}"
+        elif key_error_token:
+            title = f"[{component}] {key_error_token} failure during {component.lower()} execution"
+        elif candidate_phrase:
+            title = f"[{component}] {candidate_phrase[:80]}"
         else:
-            title = f"[{component}] Service defect under concurrent execution"
+            title = f"[{component}] Defect in {component.lower()} operations"
 
         return StructuredBugSummary(
             title=title,
